@@ -1,0 +1,8 @@
+output/
+__pycache__/
+.ruff_cache/
+*.pdf
+*.csv
+input_pdfs/
+success/
+nul
