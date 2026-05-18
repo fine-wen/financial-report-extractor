@@ -54,12 +54,7 @@ log = logging.getLogger(__name__)
 
 def get_processed_keys() -> set:
     keys = set()
-    for year_dir in BASE_DIR.iterdir():
-        if not year_dir.is_dir():
-            continue
-        csv_file = year_dir / "financial_data.csv"
-        if not csv_file.exists():
-            continue
+    for csv_file in BASE_DIR.glob("financial_data_*.csv"):
         try:
             with open(csv_file, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
@@ -72,14 +67,13 @@ def get_processed_keys() -> set:
     return keys
 
 
-def get_csv_path_for_year(year: str) -> Path:
+def csv_path_for_year(year: str) -> Path:
     year_str = str(year) if year and str(year) != "未知年度" else "其他"
-    return BASE_DIR / year_str / "financial_data.csv"
+    return BASE_DIR / f"financial_data_{year_str}.csv"
 
 
 def append_to_csv(row: dict, year: str):
-    csv_path = get_csv_path_for_year(year)
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path = csv_path_for_year(year)
     file_exists = csv_path.exists()
     with open(csv_path, "a", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
@@ -87,7 +81,7 @@ def append_to_csv(row: dict, year: str):
             writer.writeheader()
         writer.writerow(row)
     log.info(
-        f"已写入 {csv_path.parent.name}/financial_data.csv: {row.get('客户名称', '?')}"
+        f"已写入 {csv_path.name}: {row.get('客户名称', '?')}"
     )
 
 
@@ -169,7 +163,8 @@ def extract_relevant_sections(md_content: str) -> str:
     # 找到附注数据区入口
     note_start = None
     for i in range(table_start, len(lines)):
-        if "合并财务报表项目注释" in lines[i]:
+        line = lines[i]
+        if "合并财务报表项目注释" in line or "财务报表项目注释" in line:
             note_start = i
             break
 
@@ -213,6 +208,12 @@ def read_md_content(md_path: str) -> str:
     return content
 
 
+def detect_report_type(md_content: str) -> str:
+    has_table = "<table>" in md_content
+    has_notes = "合并财务报表项目注释" in md_content or "财务报表项目注释" in md_content
+    return "审计报告" if (has_table and has_notes) else "财务报表"
+
+
 def extract_indicators_via_ds(md_content: str) -> dict:
     indicators_str = "、".join(INDICATORS)
 
@@ -222,17 +223,15 @@ def extract_indicators_via_ds(md_content: str) -> dict:
 1. 提取以下 12 个指标【仅限合并报表数据，如果找不到合并报表则用母公司报表】：{indicators_str}
 2. 同时从正文中识别出【客户/公司全称】
 3. 识别报告的【年度】（如 2024、2025）
-4. 识别报告的【报表类型】：根据正文标题判断是"审计报告"还是"财务报表"
-5. 优先使用最新年度的数据（报告通常包含两年对比，取最新一年）
-6. 金额以"元"为单位，返回纯数字（去掉逗号分隔符）
-7. 如果某个指标在报告中完全没有披露，返回 "未披露"
-8. 只返回 JSON，不要任何解释或额外文字
+4. 优先使用最新年度的数据（报告通常包含两年对比，取最新一年）
+5. 金额以"元"为单位，返回纯数字（去掉逗号分隔符）
+6. 如果某个指标在报告中完全没有披露，返回 "未披露"
+7. 只返回 JSON，不要任何解释或额外文字
 
 JSON 格式示例：
 {{
     "客户名称": "公司全称",
     "年度": 2024,
-    "报表类型": "审计报告",
     "营业收入": 123456789.00,
     "主营业务收入": 123456789.00,
     ...
@@ -315,6 +314,9 @@ def process_pdf(pdf_path: Path, index: int = 1, total: int = 1):
         log.error(f"  {pdf_path.name} DeepSeek 提取失败，跳过")
         return
 
+    # 根据内容结构判定报表类型，覆盖 DS 的猜测结果
+    raw_result["报表类型"] = detect_report_type(md_content)
+
     row = clean_ds_result(raw_result)
     log.info(
         f"  提取结果: {row.get('客户名称')} | "
@@ -322,7 +324,6 @@ def process_pdf(pdf_path: Path, index: int = 1, total: int = 1):
         f"净利润={row.get('净利润')}"
     )
 
-    # 获取年度，用于决定 CSV 写入目录
     year = raw_result.get("年度", "其他")
     append_to_csv(row, year)
     move_to_success(pdf_path, raw_result)
@@ -425,7 +426,7 @@ def main():
     log.info("财务报表自动提取工具 启动")
     log.info(f"监控文件夹: {WATCH_DIR}")
     log.info(f"成功归档:   {SUCCESS_DIR}")
-    log.info(f"CSV 输出:   {BASE_DIR}/年度/financial_data.csv")
+    log.info(f"CSV 输出:   {BASE_DIR}/financial_data_年度.csv")
     log.info(f"DeepSeek 模型: {DS_MODEL}")
     log.info(f"运行模式: {'持续监控' if args.watch else '一次性处理'}")
     log.info("=" * 50)

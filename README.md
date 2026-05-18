@@ -56,12 +56,9 @@ python batch_extract.py --watch
 
 ```
 ocr工具/
-├── 2024/
-│   └── financial_data.csv    ← 2024 年度指标数据
-├── 2025/
-│   └── financial_data.csv    ← 2025 年度指标数据
-├── 其他/
-│   └── financial_data.csv    ← 年度识别失败的兜底
+├── financial_data_2024.csv   ← 2024 年度指标数据
+├── financial_data_2025.csv   ← 2025 年度指标数据
+├── financial_data_其他.csv   ← 年度识别失败的兜底
 ├── input_pdfs/               ← 放待处理 PDF
 ├── success/                  ← 处理完成的归档 PDF
 └── output/                   ← MinerU 中间缓存
@@ -82,7 +79,7 @@ ocr工具/
 # 例如: 晶创科技有限公司_2024_审计报告.pdf
 ```
 
-报表类型由 DeepSeek 根据正文标题自动判断（审计报告 / 财务报表）。
+报表类型根据内容结构自动判定：含三大主表（资产负债表、利润表、现金流量表）且含附注章节 → "审计报告"，否则 → "财务报表"。
 
 ## 提取的指标
 
