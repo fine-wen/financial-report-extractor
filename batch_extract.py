@@ -100,6 +100,13 @@ def parse_pdf_with_mineru(pdf_path: Path) -> str | None:
             log.info(f"  MinerU 已有缓存: {md_path}")
             return str(md_path)
 
+    # 放宽匹配: 搜索所有输出目录，找文件名包含 pdf_name 的
+    for d in OUTPUT_DIR.iterdir():
+        if d.is_dir() and pdf_name in d.name:
+            for m in (d / "auto").glob("*.md"):
+                log.info(f"  MinerU 模糊匹配缓存: {m}")
+                return str(m)
+
     log.info(f"  正在调用 mineru 解析: {pdf_path.name}")
     result = subprocess.run(
         [
@@ -110,10 +117,12 @@ def parse_pdf_with_mineru(pdf_path: Path) -> str | None:
             str(OUTPUT_DIR),
             "-b",
             "pipeline",
+            "-f",
+            "False",
         ],
         capture_output=True,
         text=True,
-        timeout=900,
+        timeout=3600,
         env={**os.environ, "MINERU_MODEL_SOURCE": MINERU_MODEL_SOURCE},
     )
 
