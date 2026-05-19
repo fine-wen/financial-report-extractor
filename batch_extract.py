@@ -67,13 +67,13 @@ def get_processed_keys() -> set:
     return keys
 
 
-def csv_path_for_year(year: str) -> Path:
+def get_csv_path_for_year(year: str) -> Path:
     year_str = str(year) if year and str(year) != "未知年度" else "其他"
     return BASE_DIR / f"financial_data_{year_str}.csv"
 
 
 def append_to_csv(row: dict, year: str):
-    csv_path = csv_path_for_year(year)
+    csv_path = get_csv_path_for_year(year)
     file_exists = csv_path.exists()
     with open(csv_path, "a", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
@@ -163,8 +163,7 @@ def extract_relevant_sections(md_content: str) -> str:
     # 找到附注数据区入口
     note_start = None
     for i in range(table_start, len(lines)):
-        line = lines[i]
-        if "合并财务报表项目注释" in line or "财务报表项目注释" in line:
+        if "合并财务报表项目注释" in lines[i]:
             note_start = i
             break
 
@@ -208,16 +207,27 @@ def read_md_content(md_path: str) -> str:
     return content
 
 
-def detect_report_type(md_content: str) -> str:
-    has_table = "<table>" in md_content
-    has_notes = "合并财务报表项目注释" in md_content or "财务报表项目注释" in md_content
-    return "审计报告" if (has_table and has_notes) else "财务报表"
+def determine_report_type(md_full: str) -> str:
+    has_bs = '资产负债表' in md_full
+    has_is = '利润表' in md_full
+    has_cf = '现金流量表' in md_full
+    has_notes = '合并财务报表项目注释' in md_full
+    table_count = md_full.count('<table>')
+
+    log.info(
+        f"  判定报表类型: 主表(资产={has_bs},利润={has_is},现金流={has_cf}), "
+        f"附注={has_notes}, 表格数={table_count}"
+    )
+
+    if has_bs and has_is and has_notes:
+        return "审计报告"
+    return "财务报表"
 
 
 def extract_indicators_via_ds(md_content: str) -> dict:
     indicators_str = "、".join(INDICATORS)
 
-    system_prompt = f"""你是一个专业的财务报表数据提取助手。你的任务是从审计报告的 Markdown 内容中提取指定的财务指标。
+    system_prompt = f"""你是一个专业的财务报表数据提取助手。你的任务是从财务报表的 Markdown 内容中提取指定的财务指标。
 
 要求：
 1. 提取以下 12 个指标【仅限合并报表数据，如果找不到合并报表则用母公司报表】：{indicators_str}
@@ -276,10 +286,7 @@ def clean_ds_result(result: dict) -> dict:
     return row
 
 
-def move_to_success(pdf_path: Path, ds_result: dict):
-    company = ds_result.get("客户名称", pdf_path.stem)
-    year = ds_result.get("年度", "未知年度")
-    report_type = ds_result.get("报表类型", "财务报表")
+def move_to_success(pdf_path: Path, company: str, year: str, report_type: str):
 
     SUCCESS_DIR.mkdir(parents=True, exist_ok=True)
     new_name = f"{company}_{year}_{report_type}.pdf"
@@ -306,6 +313,11 @@ def process_pdf(pdf_path: Path, index: int = 1, total: int = 1):
         log.error(f"  {pdf_path.name} 解析失败，跳过")
         return
 
+    # 读取完整内容用于判定报表类型
+    with open(md_path, "r", encoding="utf-8") as f:
+        md_full = f.read()
+    report_type = determine_report_type(md_full)
+
     md_content = read_md_content(md_path)
     log.info(f"  已读取 Markdown ({len(md_content)} 字符)")
 
@@ -313,9 +325,6 @@ def process_pdf(pdf_path: Path, index: int = 1, total: int = 1):
     if not raw_result:
         log.error(f"  {pdf_path.name} DeepSeek 提取失败，跳过")
         return
-
-    # 根据内容结构判定报表类型，覆盖 DS 的猜测结果
-    raw_result["报表类型"] = detect_report_type(md_content)
 
     row = clean_ds_result(raw_result)
     log.info(
@@ -326,7 +335,8 @@ def process_pdf(pdf_path: Path, index: int = 1, total: int = 1):
 
     year = raw_result.get("年度", "其他")
     append_to_csv(row, year)
-    move_to_success(pdf_path, raw_result)
+    company = raw_result.get("客户名称", pdf_path.stem)
+    move_to_success(pdf_path, company, str(year), report_type)
     log.info(f"  ✓ [{index}/{total}] {pdf_path.name} 处理完成")
 
 
