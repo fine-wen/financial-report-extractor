@@ -1,0 +1,32 @@
+[project]
+name = "enterprise-knowledge-mvp"
+version = "0.1.0"
+description = "企业财务资料知识中台第一版"
+requires-python = ">=3.13"
+dependencies = [
+  "fastapi==0.116.1",
+  "uvicorn[standard]==0.35.0",
+  "sqlalchemy==2.0.43",
+  "pydantic-settings==2.10.1",
+  "python-multipart==0.0.20",
+  "pypdf==6.0.0",
+  "httpx==0.28.1",
+  "openpyxl==3.1.5",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==8.4.1",
+  "reportlab==4.4.3",
+]
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

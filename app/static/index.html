@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>企业财务资料工作台</title>
+    <link rel="stylesheet" href="/styles.css?v=20261009-1" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">企</div>
+          <div><strong>企业知识中台</strong><span>财务资料第一版</span></div>
+        </div>
+        <nav id="main-nav" aria-label="主要导航">
+          <button data-testid="nav-dashboard" data-view="dashboard" class="nav-item active"><span>⌂</span>工作概览</button>
+          <button data-testid="nav-companies" data-view="companies" class="nav-item"><span>▦</span>企业档案</button>
+          <button data-testid="nav-documents" data-view="documents" class="nav-item"><span>▤</span>文档中心</button>
+          <button data-testid="nav-review" data-view="review" class="nav-item"><span>✓</span>人工复核</button>
+          <button data-testid="nav-financial" data-view="financial" class="nav-item"><span>◫</span>财务档案</button>
+          <button data-testid="nav-tax" data-view="tax" class="nav-item"><span>▣</span>税务档案</button>
+        </nav>
+        <div class="sidebar-foot">
+          <div class="status-dot"></div>
+          <div><strong>本机安全运行</strong><span>原始文件保存在本地</span></div>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <div><p class="eyebrow">企业知识中台</p><h1 id="page-title">工作概览</h1></div>
+          <div class="topbar-actions">
+            <button class="ghost-button" id="refresh-button" data-testid="refresh-button">刷新数据</button>
+            <button class="primary-button" id="quick-upload" data-testid="quick-upload">＋ 上传财务资料</button>
+          </div>
+        </header>
+        <section id="app-content" class="content" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status"></div>
+
+    <dialog id="company-dialog" class="modal">
+      <form id="company-form" method="dialog">
+        <div class="modal-head"><div><p class="eyebrow">企业档案</p><h2>新建企业档案</h2></div><button type="button" class="icon-button" data-close="company-dialog">×</button></div>
+        <label>企业名称<input data-testid="company-name" name="name" required minlength="2" placeholder="请输入完整企业名称" /></label>
+        <label>统一社会信用代码<input data-testid="company-code" name="unified_code" maxlength="32" placeholder="选填" /></label>
+        <div class="form-grid"><label>所属行业<input name="industry" maxlength="100" placeholder="如：软件和信息技术服务业" /></label><label>联系人<input name="contact_name" maxlength="100" placeholder="选填" /></label></div>
+        <div class="modal-actions"><button type="button" class="ghost-button" data-close="company-dialog">取消</button><button data-testid="save-company" class="primary-button" type="submit">建立档案</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="company-batch-dialog" class="modal">
+      <form id="company-batch-form" method="dialog">
+        <div class="modal-head"><div><p class="eyebrow">企业档案</p><h2>批量新建企业</h2></div><button type="button" class="icon-button" data-close="company-batch-dialog">×</button></div>
+        <label>企业清单<textarea data-testid="company-batch-text" name="companies" rows="10" required placeholder="每行一家企业&#10;&#10;也可从Excel复制四列：企业名称、统一社会信用代码、所属行业、联系人"></textarea></label>
+        <div class="notice"><strong>填写方式</strong><span>只填企业名称即可；如果从 Excel 复制，多列之间会自动按制表符识别。最多一次建立 200 家，已存在或重复的企业会自动跳过。</span></div>
+        <div class="modal-actions"><button type="button" class="ghost-button" data-close="company-batch-dialog">取消</button><button data-testid="save-company-batch" class="primary-button" type="submit">批量建立档案</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="upload-dialog" class="modal">
+      <form id="upload-form" method="dialog">
+        <div class="modal-head"><div><p class="eyebrow">文档中心</p><h2>上传财务资料</h2></div><button type="button" class="icon-button" data-close="upload-dialog">×</button></div>
+        <label>搜索企业<input data-testid="upload-company-search" id="upload-company-search" type="search" placeholder="输入企业名称或统一社会信用代码" autocomplete="off" /></label>
+        <label>选择企业<select data-testid="upload-company" id="upload-company" name="company_id" required></select></label>
+        <label class="drop-zone" for="pdf-file"><span class="upload-icon">⇧</span><strong>选择一份或多份PDF资料</strong><small>支持审计报告、完税证明、增值税申报表和企业所得税年报/预缴表，单份最大100MB</small><input data-testid="pdf-file" id="pdf-file" name="file" type="file" accept="application/pdf,.pdf" multiple required /></label>
+        <p id="selected-file" class="selected-file">尚未选择文件</p>
+        <div class="notice"><strong>扫描件说明</strong><span>扫描件需要MinerU OCR。当前版本若无法读取文字，会明确提示，不会生成猜测结果。</span></div>
+        <div class="modal-actions"><button type="button" class="ghost-button" data-close="upload-dialog">取消</button><button data-testid="submit-upload" class="primary-button" type="submit">上传并开始识别</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="auto-upload-dialog" class="modal wide-modal">
+      <form id="auto-upload-form" method="dialog">
+        <div class="modal-head"><div><p class="eyebrow">企业匹配</p><h2>按报告内容匹配企业</h2></div><button type="button" class="icon-button" data-close="auto-upload-dialog">×</button></div>
+        <label class="drop-zone" for="auto-pdf-files"><span class="upload-icon">⇧</span><strong>选择不同企业的一份或多份审计报告</strong><small>从PDF首页文字精确匹配已有企业；无法唯一匹配的文件不会入库</small><input id="auto-pdf-files" type="file" accept="application/pdf,.pdf" multiple required /></label>
+        <p id="auto-selected-files" class="selected-file">尚未选择文件</p>
+        <div class="notice"><strong>适用范围</strong><span>目前支持首页有可提取文字、且企业已经建档的PDF。纯扫描首页或未建档企业，请使用按企业上传或企业文件夹导入。</span></div>
+        <div id="auto-upload-result" class="notice" hidden></div>
+        <div class="modal-actions"><button type="button" class="ghost-button" data-close="auto-upload-dialog">取消</button><button class="primary-button" type="submit">自动匹配并上传</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="batch-folder-dialog" class="modal wide-modal">
+      <form id="batch-folder-form" method="dialog">
+        <div class="modal-head"><div><p class="eyebrow">批量导入</p><h2>按企业文件夹批量导入</h2></div><button type="button" class="icon-button" data-close="batch-folder-dialog">×</button></div>
+        <label class="drop-zone" for="batch-folder"><span class="upload-icon">⇧</span><strong>选择包含多家企业的总文件夹</strong><small>每个子文件夹名视为企业名，数字序号会自动去除，子文件夹内PDF会按选择顺序排队</small><input data-testid="batch-folder" id="batch-folder" type="file" accept="application/pdf,.pdf" webkitdirectory directory multiple required /></label>
+        <p id="selected-folder" class="selected-file">尚未选择文件夹</p>
+        <div class="notice"><strong>目录示例</strong><span>总文件夹 / 2宁波某某有限公司 / 2025年审计报告.pdf。已有企业自动匹配，未建档企业自动新建，重复文件自动跳过。</span></div>
+        <div id="batch-folder-result" class="notice" hidden></div>
+        <div class="modal-actions"><button type="button" class="ghost-button" data-close="batch-folder-dialog">取消</button><button data-testid="submit-batch-folder" class="primary-button" type="submit">批量上传并排队</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="review-dialog" class="modal wide-modal">
+      <form id="review-form" method="dialog">
+        <div class="modal-head"><div><p class="eyebrow">人工复核</p><h2 id="review-title">复核字段</h2></div><button type="button" class="icon-button" data-close="review-dialog">×</button></div>
+        <input type="hidden" name="field_id" />
+        <div class="review-layout">
+          <div class="evidence-panel"><span class="panel-label">原文证据</span><div id="review-evidence" class="evidence-quote"></div><div id="review-source" class="source-line"></div></div>
+          <div class="edit-panel">
+            <label>复核后数值<input data-testid="review-value" name="value_text" /></label>
+            <div class="form-grid"><label>单位<input name="unit" /></label><label>所属期间 / 年度<input name="period" /></label></div>
+            <label>原件物理页码<input name="source_page" type="number" min="1" /></label>
+            <label>原文证据<textarea name="source_quote" rows="3"></textarea></label>
+            <label>复核人<input data-testid="reviewer" name="reviewer" required value="审核员" /></label>
+            <label>处理结果<select data-testid="review-status" name="status"><option value="confirmed">确认原值</option><option value="corrected">修改后确认</option><option value="missing">标记缺失</option></select></label>
+          </div>
+        </div>
+        <div class="modal-actions"><button type="button" class="ghost-button" data-close="review-dialog">取消</button><button data-testid="save-review" class="ghost-button" type="submit">保存</button><button data-testid="save-review-next" id="save-review-next" class="primary-button" type="submit">保存并复核下一项</button></div>
+      </form>
+    </dialog>
+
+    <script src="/app.js?v=20261102-1"></script>
+  </body>
+</html>
