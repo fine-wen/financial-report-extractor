@@ -455,8 +455,10 @@ def validate_metric_completeness(metrics: list[ExtractedMetric]) -> list[str]:
     errors: list[str] = []
     if "total_assets" not in codes:
         errors.append("缺少资产总额")
-    if "total_liabilities" not in codes or "owners_equity" not in codes:
-        errors.append("缺少负债总额或所有者权益")
+    if "total_liabilities" not in codes:
+        errors.append("缺少负债总额")
+    if "owners_equity" not in codes:
+        errors.append("缺少所有者权益")
     if "operating_revenue" not in codes:
         errors.append("缺少营业收入")
     if "net_profit" not in codes:
@@ -573,6 +575,10 @@ def general_note_start_index(pages: list[ParsedPage]) -> int | None:
 
 
 def parent_note_start_index(pages: list[ParsedPage]) -> int | None:
+    for index, page in enumerate(pages):
+        text = searchable_line(page.text)
+        if "母公司财务报表附注" in text and "公司基本情况" in text:
+            return index
     titles = (
         "母公司财务报表主要项目注释",
         "母公司财务报表项目注释",
@@ -991,6 +997,8 @@ def canonical_table_label(text: str) -> str:
     label = re.sub(r"^[\uff08(]?[\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e0-9]+[\uff09)\u3001.\uff0e]", "", label)
     label = re.sub(r"^[、.．]+", "", label)
     label = re.sub(r"^(加|减|其中)[:：]", "", label)
+    # OCR can repeat this word at a merged cell boundary. Keep the source quote intact.
+    label = label.replace("所有者权益权益合计", "所有者权益合计")
     return re.sub(r"[:：]$", "", label)
 
 
@@ -2927,6 +2935,8 @@ def extract_financial_metrics(
     warnings: list[str] | None = None,
 ) -> list[ExtractedMetric]:
     current_period, previous_period = report_periods(report_period)
+    notes_start = general_note_start_index(pages)
+    primary_region = pages if notes_start is None else pages[:notes_start]
     partial_previous_categories = {
         category for category, title in (("利润表", "利润表"), ("现金流量表", "现金流量表"))
         if any(
@@ -2946,9 +2956,18 @@ def extract_financial_metrics(
             # consolidated and company statements. Cash-flow note tables often
             # repeat consolidated totals and can otherwise win by page order.
             statement_pages = [
-                page for page in pages
-                if "现金流量表" in searchable_line(page.text[:500])
+                page for page in primary_region
+                if (
+                    "现金流量表" in searchable_line(page.text[:500])
+                    or (
+                        "<table" in page.text.lower()
+                        and all(marker in searchable_line(page.text) for marker in (
+                            "经营活动产生的现金流量", "筹资活动产生的现金流量", "现金及现金等价物"
+                        ))
+                    )
+                )
                 and "附注" not in searchable_line(page.text[:500])
+                and "补充资料" not in searchable_line(page.text[:500])
             ]
             company_pages = [
                 page for page in statement_pages
