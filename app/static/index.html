@@ -4,15 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>企业财务资料工作台</title>
-    <link rel="stylesheet" href="/styles.css?v=20261009-1" />
+    <link rel="stylesheet" href="/styles.css?v=20261105-2" />
+    <link rel="stylesheet" href="/workbench.css?v=20261105-2" />
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark">企</div>
-          <div><strong>企业知识中台</strong><span>财务资料第一版</span></div>
+          <div><strong>企业知识中台</strong><span>财务资料工作台</span></div>
         </div>
+        <p class="nav-label">工作空间</p>
         <nav id="main-nav" aria-label="主要导航">
           <button data-testid="nav-dashboard" data-view="dashboard" class="nav-item active"><span>⌂</span>工作概览</button>
           <button data-testid="nav-companies" data-view="companies" class="nav-item"><span>▦</span>企业档案</button>
@@ -29,7 +31,7 @@
 
       <main class="main-area">
         <header class="topbar">
-          <div><p class="eyebrow">企业知识中台</p><h1 id="page-title">工作概览</h1></div>
+          <div><p class="eyebrow">财务资料工作台</p><h1 id="page-title">工作概览</h1><p id="page-description" class="page-description">查看待办与最近处理的资料</p></div>
           <div class="topbar-actions">
             <button class="ghost-button" id="refresh-button" data-testid="refresh-button">刷新数据</button>
             <button class="primary-button" id="quick-upload" data-testid="quick-upload">＋ 上传财务资料</button>
@@ -113,6 +115,7 @@
       </form>
     </dialog>
 
-    <script src="/app.js?v=20261102-1"></script>
+    <script src="/ui-utils.js?v=20261105-2"></script>
+    <script src="/app.js?v=20261105-2"></script>
   </body>
 </html>

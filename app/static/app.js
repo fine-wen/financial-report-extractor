@@ -13,6 +13,14 @@ const state = {
   documentType: "all",
   metricOptions: [],
   currentMetricCodes: [],
+  pages: { companies: 1, documents: 1, review: 1, financial: 1, tax: 1 },
+  pageSizes: { companies: 25, documents: 25, review: 50, financial: 50, tax: 50 },
+  reviewSearch: "",
+  reviewCompany: "all",
+  reviewPeriod: "all",
+  archiveFields: [],
+  archiveSearch: "",
+  archivePeriod: "all",
 };
 
 const titles = {
@@ -23,6 +31,42 @@ const titles = {
   financial: "财务档案",
   tax: "税务档案",
 };
+
+const descriptions = {
+  dashboard: "查看待办，继续最近的工作",
+  companies: "按企业管理资料，快速进入档案",
+  documents: "查找报告、查看进度与处理提示",
+  review: "对照来源逐项核验，保留每一次确认",
+  financial: "查询企业财务指标与原文证据",
+  tax: "按企业与所属期间查看税务资料",
+};
+
+function disclosure(text, label = "查看完整说明") {
+  if (!text) return "";
+  return `<details class="text-disclosure"><summary><span>${escapeHtml(text)}</span><em>${label}</em></summary><div class="disclosure-body">${escapeHtml(text)}</div></details>`;
+}
+
+function pager(key, page) {
+  const size = state.pageSizes[key];
+  return `<div class="pagination" aria-label="列表分页"><span>共 <b>${page.total}</b> 项 · 当前 ${page.start}–${page.end} 项</span><div class="pagination-controls"><label>每页 <select aria-label="每页显示数量" data-page-size="${key}">${[25, 50, 100].map(n => `<option ${size === n ? "selected" : ""}>${n}</option>`).join("")}</select></label><button class="ghost-button" data-page-key="${key}" data-page="${page.page - 1}" ${page.page === 1 ? "disabled" : ""}>上一页</button><span>${page.page} / ${page.totalPages}</span><button class="ghost-button" data-page-key="${key}" data-page="${page.page + 1}" ${page.page === page.totalPages ? "disabled" : ""}>下一页</button></div></div>`;
+}
+
+function pageItems(key, items) {
+  const result = WorkbenchUI.page(items, state.pages[key], state.pageSizes[key]);
+  state.pages[key] = result.page;
+  return result;
+}
+
+function syncNavigation() {
+  document.getElementById("page-title").textContent = titles[state.view];
+  document.getElementById("page-description").textContent = descriptions[state.view];
+  document.querySelectorAll(".nav-item").forEach((item) => {
+    const active = item.dataset.view === state.view;
+    item.classList.toggle("active", active);
+    if (active) item.setAttribute("aria-current", "page");
+    else item.removeAttribute("aria-current");
+  });
+}
 
 const statusLabels = {
   queued: "等待处理",
@@ -167,33 +211,33 @@ function documentsForCompany(companyId) {
 function companyDocumentList(companyId) {
   const documents = documentsForCompany(companyId);
   if (documents.length === 0) return '<span class="subtext">暂未上传</span>';
-  return `<div class="company-document-list">${documents.map((document) => `<div><span title="${escapeHtml(document.filename)}">${escapeHtml(document.filename)}</span>${badge(document.status)}</div>`).join("")}</div>`;
+  return `<details class="company-files"><summary>${documents.length} 份资料 · 展开查看</summary><div class="company-document-list">${documents.map((document) => `<div><span title="${escapeHtml(document.filename)}">${escapeHtml(document.filename)}</span>${badge(document.status)}</div>`).join("")}</div></details>`;
 }
 
 function renderDashboard() {
   const data = state.dashboard;
   const recentDocuments = state.documents.slice(0, 5);
+  const waiting = state.documents.filter(d => d.status === "review_required").length;
   document.getElementById("app-content").innerHTML = `
-    <section class="hero">
-      <div><p class="eyebrow">可核验的财务数据</p><h2>把散落在PDF里的财务数据，变成可复核、可追溯的企业档案</h2><p>上传资料后，系统读取常用财务指标并保留原文证据。所有数据经过人工确认后再用于项目申报。</p></div>
-      <div class="hero-side"><span>今日待办</span><strong>${data.pending_field_count}</strong><span>项财务字段等待人工复核</span></div>
+    <section class="welcome"><div><span class="section-kicker">工作台 / 概览</span><h2>每一份资料，都有据可查。</h2><p>从上传到复核，继续推进企业的财务资料整理。</p></div><button class="primary-button" data-go="review">继续复核 <span aria-hidden="true">→</span></button></section>
+    <section class="stats-grid" aria-label="工作台统计">
+      <button class="stat-card" data-go="companies"><span>企业档案</span><strong>${data.company_count.toLocaleString()}</strong><small>查看全部企业 <span>↗</span></small></button>
+      <button class="stat-card" data-go="documents"><span>资料文件</span><strong>${data.document_count.toLocaleString()}</strong><small>${data.processing_count} 份正在处理 <span>↗</span></small></button>
+      <button class="stat-card accent-card" data-go="review"><span>待复核字段</span><strong>${data.pending_field_count.toLocaleString()}</strong><small>查看待办与原文证据 <span>↗</span></small></button>
+      <div class="stat-card"><span>已确认字段</span><strong>${data.confirmed_field_count.toLocaleString()}</strong><small>已确认及已修改确认的字段</small></div>
     </section>
-    <section class="stats-grid">
-      <div class="stat-card"><span>企业档案</span><strong>${data.company_count}</strong><small>已建立企业</small></div>
-      <div class="stat-card"><span>资料文件</span><strong>${data.document_count}</strong><small>${data.processing_count} 份正在处理</small></div>
-      <div class="stat-card"><span>待复核字段</span><strong>${data.pending_field_count}</strong><small>需要业务人员确认</small></div>
-      <div class="stat-card"><span>已确认字段</span><strong>${data.confirmed_field_count}</strong><small>${data.failed_count} 份资料处理失败</small></div>
-    </section>
-    <section class="panel"><div class="panel-head"><div><h2>最近处理的资料</h2><p>查看识别进度和异常信息</p></div><button class="text-button" data-go="documents">查看全部</button></div>
-      ${recentDocuments.length === 0 ? emptyState("还没有财务资料", "先建立企业档案，再上传一份文字型PDF财务报表。", "开始建立企业", "empty-create-company") : documentTable(recentDocuments, false)}
+    <section class="task-strip" aria-label="快速处理"><div><span class="task-icon">✓</span><span><strong>${waiting} 份资料待复核</strong><small>查看重点指标，逐项确认</small></span><button class="text-button" data-document-quick="review_required">查看资料 →</button></div><div><span class="task-icon amber">!</span><span><strong>${data.failed_count} 份处理失败</strong><small>查看失败原因与处理入口</small></span><button class="text-button" data-document-quick="failed">查看原因 →</button></div><div><span class="task-icon">↗</span><span><strong>批量导入资料</strong><small>按企业文件夹整理并上传</small></span><button class="text-button" id="batch-folder-upload">导入文件夹 →</button></div></section>
+    <section class="panel"><div class="panel-head"><div><h2>最近上传的资料 <span class="heading-count">${recentDocuments.length}</span></h2><p>处理提示可展开，完整数据在复核页查看</p></div><button class="ghost-button" data-go="documents">全部资料 →</button></div>
+      ${recentDocuments.length === 0 ? emptyState("还没有财务资料", "先建立企业档案，再上传一份财务报表。", "建立企业", "empty-create-company") : documentTable(recentDocuments, false)}
     </section>`;
 }
 
 function documentTable(documents, allowVoid) {
-  return `<div class="table-wrap"><table><thead><tr><th>文件</th><th>所属企业</th><th>状态</th><th>识别结果检查摘要</th><th>上传时间</th><th>操作</th></tr></thead><tbody>${documents.map((document) => `
-    <tr><td><span class="company-name">${escapeHtml(document.filename)}</span><span class="subtext">${escapeHtml(documentTypeLabels[document.document_type] || document.document_type)} · ${document.page_count ? `${document.page_count} 页` : document.sha256.slice(0, 12)}</span></td>
-    <td>${escapeHtml(companyName(document.company_id))}</td><td>${badge(document.status)}${document.error_message ? `<span class="subtext document-error">${escapeHtml(document.error_message)}</span>` : ""}</td>
-    <td>${documentSummary(document)}</td><td>${formatDate(document.created_at)}</td><td><div class="row-actions">${["failed", "review_required", "reviewed"].includes(document.status) ? `<button class="text-button" data-retry-document="${document.id}">按最新规则重算</button><button class="text-button" data-recognize-document="${document.id}">重新识别原文件</button>` : ""}${(document.status === "failed" && document.error_message?.includes("核心财务报表识别不完整")) || (document.status === "review_required" && document.error_message?.includes("疑似行号或附注号")) ? `<button class="text-button" data-targeted-document="${document.id}">只补读疑点页</button>` : ""}${document.field_count > 0 ? `<button class="text-button" data-review-document="${document.id}">复核数据</button>` : ""}${allowVoid && !["processing", "voided"].includes(document.status) ? `<button class="text-button danger-text" data-void-document="${document.id}">作废文件</button>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="document-table"><thead><tr><th>文件 / 上传时间</th><th>所属企业</th><th>处理状态</th><th>识别结果</th><th>操作</th></tr></thead><tbody>${documents.map((doc) => `
+    <tr><td><span class="file-icon" aria-hidden="true">PDF</span><span class="company-name">${escapeHtml(doc.filename)}</span><span class="subtext">${escapeHtml(documentTypeLabels[doc.document_type] || doc.document_type)}${doc.page_count ? ` · ${doc.page_count} 页` : ""}</span><span class="subtext">${formatDate(doc.created_at)}</span></td>
+    <td><span class="company-label">${escapeHtml(companyName(doc.company_id))}</span></td><td>${badge(doc.status)}${doc.error_message ? disclosure(doc.error_message, "展开处理提示") : ""}</td>
+    <td>${documentSummary(doc)}</td><td><div class="document-actions">${doc.field_count > 0 ? `<button class="review-button" data-review-document="${doc.id}">复核数据 <span aria-hidden="true">↗</span></button>` : '<span class="subtext">暂无可复核字段</span>'}
+    ${["failed", "review_required", "reviewed"].includes(doc.status) || (allowVoid && !["processing", "voided"].includes(doc.status)) ? `<details class="action-menu"><summary>更多操作 <span aria-hidden="true">⌄</span></summary><div>${["failed", "review_required", "reviewed"].includes(doc.status) ? `<button data-retry-document="${doc.id}">按最新规则重算</button><button data-recognize-document="${doc.id}">重新识别原文件</button>` : ""}${(doc.status === "failed" && doc.error_message?.includes("核心财务报表识别不完整")) || (doc.status === "review_required" && doc.error_message?.includes("疑似行号或附注号")) ? `<button data-targeted-document="${doc.id}">只补读疑点页</button>` : ""}${allowVoid && !["processing", "voided"].includes(doc.status) ? `<button class="danger-text" data-void-document="${doc.id}">作废文件</button>` : ""}</div></details>` : ""}</div></td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function filteredCompanies() {
@@ -204,9 +248,11 @@ function filteredCompanies() {
 }
 
 function companySearchResults(companies) {
+  const page = pageItems("companies", companies);
+  const rows = page.items;
   return companies.length === 0
     ? emptyState("没有匹配企业", "请调整搜索内容，或清空搜索后查看全部企业。", "", "")
-    : `<div class="table-wrap"><table><thead><tr><th>企业</th><th>行业</th><th>已上传报表文件</th><th>待复核</th><th>已确认</th><th>建立时间</th><th>操作</th></tr></thead><tbody>${companies.map((company) => `<tr><td><span class="company-name">${escapeHtml(company.name)}</span><span class="subtext">${escapeHtml(company.unified_code || "未填写统一社会信用代码")}</span></td><td>${escapeHtml(company.industry || "—")}</td><td>${companyDocumentList(company.id)}<span class="subtext">共 ${company.document_count} 份</span></td><td>${company.pending_count}</td><td>${company.confirmed_count}</td><td>${formatDate(company.created_at)}</td><td><div class="row-actions"><button class="text-button" data-upload-company="${company.id}">上传资料</button><button class="text-button" data-company-documents="${company.id}">查看文件</button><button class="text-button" data-company-financial="${company.id}">查看财务档案</button></div></td></tr>`).join("")}</tbody></table></div>`;
+    : `<div class="table-wrap"><table><thead><tr><th>企业</th><th>行业</th><th>已上传报表文件</th><th>待复核</th><th>已确认</th><th>建立时间</th><th>操作</th></tr></thead><tbody>${rows.map((company) => `<tr><td><span class="company-name">${escapeHtml(company.name)}</span><span class="subtext">${escapeHtml(company.unified_code || "未填写统一社会信用代码")}</span></td><td>${escapeHtml(company.industry || "—")}</td><td>${companyDocumentList(company.id)}<span class="subtext">共 ${company.document_count} 份</span></td><td>${company.pending_count}</td><td>${company.confirmed_count}</td><td>${formatDate(company.created_at)}</td><td><div class="row-actions"><button class="text-button" data-upload-company="${company.id}">上传资料</button><button class="text-button" data-company-documents="${company.id}">查看文件</button><button class="text-button" data-company-financial="${company.id}">查看财务档案</button></div></td></tr>`).join("")}</tbody></table></div>${pager("companies", page)}`;
 }
 
 function updateCompanySearchResults() {
@@ -220,7 +266,7 @@ function updateCompanySearchResults() {
 function renderCompanies() {
   const companies = filteredCompanies();
   document.getElementById("app-content").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>企业档案</h2><p>每家企业拥有独立的资料和财务数据</p></div><div class="row-actions"><button class="ghost-button" id="create-companies-batch" data-testid="create-companies-batch">批量新建</button><button class="primary-button" id="create-company" data-testid="create-company">＋ 新建企业</button></div></div>
-    ${state.companies.length === 0 ? emptyState("还没有企业档案", "建立第一家企业后即可上传财务资料。", "新建企业", "empty-create-company") : `<div class="filterbar"><input id="company-search" data-testid="company-search" type="search" value="${escapeHtml(state.companySearch)}" placeholder="搜索企业名称、统一社会信用代码或行业" autocomplete="off"><span class="filter-result" id="company-filter-result">显示 ${companies.length} / ${state.companies.length} 家企业</span></div><div id="company-search-results">${companySearchResults(companies)}</div>`}
+    ${state.companies.length === 0 ? emptyState("还没有企业档案", "建立第一家企业后即可上传财务资料。", "新建企业", "empty-create-company") : `<div class="filterbar"><input aria-label="搜索企业" id="company-search" data-testid="company-search" type="search" value="${escapeHtml(state.companySearch)}" placeholder="搜索企业名称、统一社会信用代码或行业" autocomplete="off"><span class="filter-result" id="company-filter-result">显示 ${companies.length} / ${state.companies.length} 家企业</span></div><div id="company-search-results">${companySearchResults(companies)}</div>`}
   </section>`;
 }
 
@@ -237,9 +283,9 @@ function filteredDocuments() {
 }
 
 function documentSearchResults(documents) {
-  return documents.length === 0
-    ? emptyState("没有匹配文件", "请调整搜索内容或处理状态后再查看。", "", "")
-    : documentTable(documents, true);
+  if (documents.length === 0) return emptyState("没有匹配文件", "试试其他关键词，或清空筛选条件。", "清空筛选", "reset-documents");
+  const page = pageItems("documents", documents);
+  return documentTable(page.items, true) + pager("documents", page);
 }
 
 function updateDocumentSearchResults() {
@@ -262,58 +308,95 @@ function renderDocuments() {
     ["voided", "已作废"],
   ];
   const typeOptions = [["all", "全部资料类型"], ["financial_statement", "审计 / 财务报表"], ["tax", "税务资料"]];
-  document.getElementById("app-content").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>文档中心</h2><p>原始文件、处理状态和识别结果统一留存</p></div><div class="row-actions"><button class="ghost-button" id="auto-upload">按内容匹配企业</button><button class="ghost-button" id="batch-folder-upload" data-testid="batch-folder-upload">批量导入企业文件夹</button><button class="primary-button" id="document-upload">＋ 上传PDF</button></div></div>${state.documents.length === 0 ? emptyState("还没有上传文档", "上传财务或税务PDF后会自动识别目标数据。", "上传第一份资料", "empty-upload") : `<div class="filterbar"><input id="document-search" data-testid="document-search" type="search" value="${escapeHtml(state.documentSearch)}" placeholder="搜索企业名称或文件名" autocomplete="off"><select id="document-type" aria-label="按资料类型筛选">${typeOptions.map(([value, label]) => `<option value="${value}" ${state.documentType === value ? "selected" : ""}>${label}</option>`).join("")}</select><select id="document-status" data-testid="document-status" aria-label="按处理状态筛选">${statusOptions.map(([value, label]) => `<option value="${value}" ${state.documentStatus === value ? "selected" : ""}>${label}</option>`).join("")}</select><span class="filter-result" id="document-filter-result">显示 ${documents.length} / ${state.documents.length} 份文件</span></div><div id="document-search-results">${documentSearchResults(documents)}</div>`}</section>`;
+  document.getElementById("app-content").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>文档中心</h2><p>原始文件、处理状态和识别结果统一留存</p></div><div class="row-actions"><button class="ghost-button" id="auto-upload">按内容匹配企业</button><button class="ghost-button" id="batch-folder-upload" data-testid="batch-folder-upload">批量导入企业文件夹</button><button class="primary-button" id="document-upload">＋ 上传PDF</button></div></div>${documentQuickFilters()}${state.documents.length === 0 ? emptyState("还没有上传文档", "上传财务或税务PDF后会自动识别目标数据。", "上传第一份资料", "empty-upload") : `<div class="filterbar"><input aria-label="搜索文档" id="document-search" data-testid="document-search" type="search" value="${escapeHtml(state.documentSearch)}" placeholder="搜索企业名称或文件名" autocomplete="off"><select id="document-type" aria-label="按资料类型筛选">${typeOptions.map(([value, label]) => `<option value="${value}" ${state.documentType === value ? "selected" : ""}>${label}</option>`).join("")}</select><select id="document-status" data-testid="document-status" aria-label="按处理状态筛选">${statusOptions.map(([value, label]) => `<option value="${value}" ${state.documentStatus === value ? "selected" : ""}>${label}</option>`).join("")}</select><span class="filter-result" id="document-filter-result">显示 ${documents.length} / ${state.documents.length} 份文件</span></div><div id="document-search-results">${documentSearchResults(documents)}</div>`}</section>`;
+}
+
+function documentQuickFilters() {
+  const items = [["all", "全部资料"], ["review_required", "待复核"], ["processing", "识别中"], ["failed", "处理失败"]];
+  return `<div class="quick-filters" aria-label="文档快捷筛选">${items.map(([key, label]) => `<button class="filter-chip ${state.documentStatus === key ? "active" : ""}" data-document-quick="${key}" aria-pressed="${state.documentStatus === key}">${label}<span>${state.documents.filter(d => key === "all" || d.status === key).length}</span></button>`).join("")}</div>`;
+}
+
+function filteredReviewFields() {
+  return WorkbenchUI.filterFields(state.fields, {query: state.reviewSearch, company: state.reviewCompany,
+    period: state.reviewPeriod, priority: state.reviewFilter});
+}
+
+function updateReviewResults() {
+  const fields = filteredReviewFields();
+  const page = pageItems("review", fields);
+  const results = document.getElementById("review-results");
+  if (!results) return;
+  const button = document.getElementById("confirm-selected");
+  button.disabled = true;
+  button.textContent = "确认已勾选项";
+  results.innerHTML = fields.length === 0 ? emptyState("没有符合条件的字段", "调整企业、年度、关键词或上方分类后再试。", "清空筛选", "reset-review") : `<div class="table-wrap"><table class="review-table"><thead><tr><th><input class="row-check" type="checkbox" id="select-visible" aria-label="勾选当前页可确认字段"></th><th>指标 / 年度</th><th>识别数值</th><th>企业 / 文件</th><th>原文证据</th><th>可信度</th><th>状态</th><th>操作</th></tr></thead><tbody>${page.items.map(field => `<tr class="review-row ${escapeHtml(field.review_priority)}"><td>${WorkbenchUI.canSelect(field) ? `<input class="row-check field-check" type="checkbox" value="${field.id}" aria-label="勾选${escapeHtml(field.label)}">` : '<span class="subtext" title="缺少数值或来源时，请逐项复核">—</span>'}</td><td><span class="company-name">${escapeHtml(field.label)}</span><span class="subtext">${escapeHtml(field.period || "年度待确认")}</span>${field.risk_reasons.length ? `<span class="risk-label">${escapeHtml(field.risk_reasons.join(" · "))}</span>` : ""}</td><td class="numeric">${formatMoney(field)}</td><td><span class="company-label">${escapeHtml(field.company_name)}</span><span class="subtext">${escapeHtml(field.document_filename)}</span></td><td class="evidence-cell"><span class="source-page">原件第 ${field.source_page || "—"} 页</span>${disclosure(field.source_quote || "无原文证据", "展开原文")}</td><td class="confidence ${Number(field.confidence) < .95 ? "low" : ""}">${Math.round(Number(field.confidence) * 100)}%</td><td>${badge(field.status)}</td><td><button class="review-button" data-open-review="${field.id}">打开复核</button></td></tr>`).join("")}</tbody></table></div>${pager("review", page)}`;
+  document.getElementById("review-result-count").textContent = `${fields.length} 项匹配字段 · 勾选仅作用于当前页`;
 }
 
 async function renderReview(documentId) {
-  showLoading();
+  const changed = state.reviewDocumentId !== documentId;
+  if (changed) { state.reviewSearch = ""; state.reviewCompany = "all"; state.reviewPeriod = "all"; state.pages.review = 1; }
   state.reviewDocumentId = documentId;
+  syncNavigation();
+  showLoading();
   const query = documentId ? `?document_id=${documentId}` : "?field_status=pending";
-  state.fields = await api(`/api/fields${query}`, {});
-  const pendingFields = state.fields.filter((field) => field.status === "pending");
-  const highCount = pendingFields.filter((field) => field.review_priority === "high").length;
-  const normalCount = pendingFields.filter((field) => field.review_priority === "normal").length;
-  const calculatedCount = pendingFields.filter((field) => field.review_priority === "calculated").length;
-  const visibleFields = state.fields.filter((field) => {
-    if (state.reviewFilter === "pending") return field.status === "pending";
-    if (["high", "normal", "calculated"].includes(state.reviewFilter)) return field.review_priority === state.reviewFilter && field.status === "pending";
-    return true;
-  });
-  document.getElementById("app-content").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>${documentId ? "文档字段复核" : "待复核字段"}</h2><p>已在导出表格和原件中完成核对的指标，可勾选后一次性确认，包括重点和计算指标。</p></div><button class="primary-button" id="confirm-selected" disabled>确认已勾选项</button></div>
-    <div class="review-stats"><button data-review-filter="high" class="review-stat ${state.reviewFilter === "high" ? "active" : ""}"><strong>${highCount}</strong><span>重点待核</span></button><button data-review-filter="normal" class="review-stat ${state.reviewFilter === "normal" ? "active" : ""}"><strong>${normalCount}</strong><span>普通待核</span></button><button data-review-filter="calculated" class="review-stat ${state.reviewFilter === "calculated" ? "active" : ""}"><strong>${calculatedCount}</strong><span>计算指标</span></button><button data-review-filter="all" class="review-stat ${state.reviewFilter === "all" ? "active" : ""}"><strong>${state.fields.length}</strong><span>全部字段</span></button></div>
-    ${state.fields.length === 0 ? emptyState("没有待复核内容", "新上传资料处理完成后，识别结果会出现在这里。", "去上传资料", "empty-upload") : `<div class="table-wrap"><table><thead><tr><th><input class="row-check" type="checkbox" id="select-visible" aria-label="勾选当前列表全部待复核项"></th><th>指标</th><th>识别数值</th><th>企业 / 文件</th><th>原文证据</th><th>可信度</th><th>状态</th><th>操作</th></tr></thead><tbody>${visibleFields.map((field) => `<tr class="review-row ${escapeHtml(field.review_priority)}"><td>${field.status === "pending" ? `<input class="row-check field-check" type="checkbox" value="${field.id}" aria-label="勾选${escapeHtml(field.label)}">` : ""}</td><td><span class="company-name">${escapeHtml(field.label)}</span><span class="subtext">${escapeHtml(field.period || "年度待确认")}${field.risk_reasons.length > 0 ? ` · ${escapeHtml(field.risk_reasons.join("、"))}` : field.review_priority === "calculated" ? " · 自动计算" : ""}</span></td><td>${formatMoney(field)}</td><td>${escapeHtml(field.company_name)}<span class="subtext">${escapeHtml(field.document_filename)}</span></td><td class="evidence-cell">第 ${field.source_page || "—"} 页 · ${escapeHtml(field.source_quote || "无原文证据")}</td><td class="confidence ${Number(field.confidence) < 0.95 ? "low" : ""}">${Math.round(Number(field.confidence) * 100)}%</td><td>${badge(field.status)}</td><td><button class="text-button" data-open-review="${field.id}">打开复核</button></td></tr>`).join("")}</tbody></table></div>`}
-  </section>`;
+  const fields = await api(`/api/fields${query}`, {});
+  if (state.view !== "review" || state.reviewDocumentId !== documentId) return;
+  state.fields = fields;
+  const pending = state.fields.filter(f => f.status === "pending");
+  const groups = [["high", "重点待核", pending.filter(f => f.review_priority === "high").length], ["normal", "普通待核", pending.filter(f => f.review_priority === "normal").length], ["calculated", "计算指标", pending.filter(f => f.review_priority === "calculated").length], ["all", "全部字段", state.fields.length]];
+  const companies = [...new Map(state.fields.map(f => [f.company_id, f.company_name])).entries()];
+  const periods = [...new Set(state.fields.map(f => f.period).filter(Boolean))].sort().reverse();
+  const doc = state.documents.find(d => d.id === documentId);
+  document.getElementById("app-content").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>${doc ? escapeHtml(doc.filename) : "待复核字段"}</h2><p>${doc ? `${escapeHtml(companyName(doc.company_id))} · ` : ""}先核对原件，再确认字段；未定位来源的字段请逐项处理。</p></div><div class="row-actions">${doc ? '<button class="ghost-button" data-go="documents">返回文档中心</button>' : ""}<button class="primary-button" id="confirm-selected" disabled>确认已勾选项</button></div></div>
+    <div class="review-stats">${groups.map(([key,label,count]) => `<button data-review-filter="${key}" class="review-stat ${state.reviewFilter === key ? "active" : ""}" aria-pressed="${state.reviewFilter === key}"><span>${label}</span><strong>${count}</strong></button>`).join("")}</div>
+    <div class="filterbar"><input id="review-search" aria-label="搜索复核字段" type="search" value="${escapeHtml(state.reviewSearch)}" placeholder="搜索指标、企业或文件名"><select id="review-company" aria-label="按企业筛选复核字段"><option value="all">全部企业</option>${companies.map(([id,name]) => `<option value="${id}" ${state.reviewCompany === String(id) ? "selected" : ""}>${escapeHtml(name)}</option>`).join("")}</select><select id="review-period" aria-label="按年度筛选复核字段"><option value="all">全部年度</option>${periods.map(p => `<option ${state.reviewPeriod === p ? "selected" : ""}>${escapeHtml(p)}</option>`).join("")}</select><button class="text-button" id="reset-review">重置筛选</button></div><div class="list-caption" id="review-result-count"></div><div id="review-results"></div></section>`;
+  updateReviewResults();
+}
+
+function archiveCompanyPicker(id) {
+  return `<div class="archive-company-picker"><input type="search" id="archive-company-search" aria-label="搜索档案企业" placeholder="搜索企业名称或信用代码" autocomplete="off"><select id="${id}" ${id === "financial-company" ? 'data-testid="financial-company"' : ""} aria-label="选择档案企业">${state.companies.map(c => `<option value="${c.id}" ${c.id === state.currentCompanyId ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}</select></div>`;
+}
+
+function archiveToolbar() {
+  const periods = [...new Set(state.archiveFields.map(f => f.period).filter(Boolean))].sort().reverse();
+  return `<div class="filterbar"><input id="archive-search" type="search" aria-label="搜索档案指标" value="${escapeHtml(state.archiveSearch)}" placeholder="搜索指标名称"><select id="archive-period" aria-label="筛选档案年度"><option value="all">全部年度 / 期间</option>${periods.map(p => `<option ${state.archivePeriod === p ? "selected" : ""}>${escapeHtml(p)}</option>`).join("")}</select><button class="text-button" id="reset-archive">重置筛选</button></div><div id="archive-results"></div>`;
+}
+
+function updateArchiveResults() {
+  const filtered = state.archiveFields.filter(f => matchesSearch(f.label, state.archiveSearch) && (state.archivePeriod === "all" || f.period === state.archivePeriod));
+  const page = pageItems(state.view, filtered);
+  const results = document.getElementById("archive-results");
+  if (!results) return;
+  results.innerHTML = !filtered.length ? emptyState("暂无匹配指标", "试试其他关键词或年度。尚未识别出数据时，可到文档中心查看处理状态。", "", "") : `<div class="table-wrap"><table class="archive-table"><thead><tr><th>指标</th><th>数值</th><th>年度 / 期间</th><th>复核状态</th><th>原文来源</th></tr></thead><tbody>${page.items.map(f => `<tr><td class="company-name">${escapeHtml(f.label)}</td><td class="numeric">${formatMoney(f)}</td><td>${escapeHtml(f.period || "—")}</td><td>${badge(f.status)}</td><td class="evidence-cell">${f.document_filename ? `<span class="subtext">${escapeHtml(f.document_filename)}</span>` : ""}<span class="source-page">原件第 ${f.source_page || "—"} 页</span>${disclosure(f.source_quote || "无原文证据", "展开原文")}</td></tr>`).join("")}</tbody></table></div>${pager(state.view, page)}`;
 }
 
 async function renderFinancial() {
-  if (state.companies.length === 0) {
-    document.getElementById("app-content").innerHTML = `<section class="panel">${emptyState("还没有企业档案", "建立企业并上传资料后，可在这里查看财务档案。", "新建企业", "empty-create-company")}</section>`;
-    return;
-  }
-  const companyId = state.currentCompanyId || state.companies[0].id;
-  state.currentCompanyId = companyId;
+  if (!state.companies.length) { document.getElementById("app-content").innerHTML = `<section class="panel">${emptyState("还没有企业档案", "建立企业并上传资料后，可在这里查看财务档案。", "新建企业", "empty-create-company")}</section>`; return; }
+  state.currentCompanyId ||= state.companies[0].id;
+  const companyId = state.currentCompanyId;
+  showLoading();
   const fields = await api(`/api/companies/${companyId}/financial-snapshot`, {});
+  if (state.view !== "financial" || state.currentCompanyId !== companyId) return;
+  state.archiveFields = fields;
+  if (state.archivePeriod !== "all" && !fields.some(f => f.period === state.archivePeriod)) state.archivePeriod = "all";
   const exportUrl = metricExportUrl();
-  const metricExport = state.metricOptions.length === 0
-    ? '<span class="subtext">暂无可汇总指标</span>'
-    : `<details class="metric-picker" data-testid="financial-metric"><summary id="metric-picker-summary">已选 ${state.currentMetricCodes.length} 项指标</summary><div class="metric-menu"><div class="metric-menu-actions"><button type="button" class="text-button" data-metric-action="all">全选</button><button type="button" class="text-button" data-metric-action="clear">清空</button></div>${state.metricOptions.map((metric) => `<label class="metric-option"><input class="metric-check" type="checkbox" value="${escapeHtml(metric.code)}" ${state.currentMetricCodes.includes(metric.code) ? "checked" : ""}><span>${escapeHtml(metric.label)}</span></label>`).join("")}</div></details><a class="primary-button ${exportUrl ? "" : "disabled"}" id="metric-export" data-testid="metric-export" ${exportUrl ? `href="${escapeHtml(exportUrl)}"` : 'aria-disabled="true"'}>导出全部企业</a>`;
-  document.getElementById("app-content").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>企业财务档案</h2><p>已识别数据与复核状态一览</p></div><div class="row-actions"><select id="financial-company" data-testid="financial-company">${state.companies.map((company) => `<option value="${company.id}" ${company.id === companyId ? "selected" : ""}>${escapeHtml(company.name)}</option>`).join("")}</select><a class="primary-button" href="/api/companies/${companyId}/export.xlsx">导出Excel</a></div></div>
-    <div class="filterbar"><span><strong>按指标汇总所有企业</strong><span class="subtext">可多选指标，导出全部年度、复核状态和原文来源</span></span><div class="row-actions">${metricExport}</div></div>
-    ${fields.length === 0 ? emptyState("该企业还没有财务数据", "上传财务PDF并完成识别后，数据会集中显示在这里。", "上传财务资料", "empty-upload") : `<div class="table-wrap"><table><thead><tr><th>指标</th><th>数值</th><th>年度</th><th>状态</th><th>来源页码</th><th>原文证据</th></tr></thead><tbody>${fields.map((field) => `<tr><td class="company-name">${escapeHtml(field.label)}</td><td>${formatMoney(field)}</td><td>${escapeHtml(field.period || "—")}</td><td>${badge(field.status)}</td><td>第 ${field.source_page || "—"} 页</td><td class="evidence-cell">${escapeHtml(field.source_quote || "—")}</td></tr>`).join("")}</tbody></table></div>`}
-  </section>`;
+  const metricExport = !state.metricOptions.length ? '<span class="subtext">暂无可汇总指标</span>' : `<details class="metric-picker" data-testid="financial-metric"><summary id="metric-picker-summary">已选 ${state.currentMetricCodes.length} 项指标</summary><div class="metric-menu"><input type="search" id="metric-search" aria-label="搜索导出指标" placeholder="搜索指标名称"><div class="metric-menu-actions"><button type="button" class="text-button" data-metric-action="all">全选全部指标</button><button type="button" class="text-button" data-metric-action="clear">清空</button></div>${state.metricOptions.map(m => `<label class="metric-option"><input class="metric-check" type="checkbox" value="${escapeHtml(m.code)}" ${state.currentMetricCodes.includes(m.code) ? "checked" : ""}><span>${escapeHtml(m.label)}</span></label>`).join("")}</div></details><a class="primary-button ${exportUrl ? "" : "disabled"}" id="metric-export" data-testid="metric-export" ${exportUrl ? `href="${escapeHtml(exportUrl)}"` : 'aria-disabled="true"'}>导出全部企业</a>`;
+  document.getElementById("app-content").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>企业财务档案</h2><p>识别数值、复核状态与原文证据一同展示</p></div><div class="row-actions">${archiveCompanyPicker("financial-company")}<a class="ghost-button" href="/api/companies/${companyId}/export.xlsx">导出当前企业</a></div></div><div class="export-strip"><div><strong>跨企业指标汇总</strong><span>选择指标，导出全部年度及复核状态</span></div><div class="row-actions">${metricExport}</div></div>${archiveToolbar()}</section>`;
+  updateArchiveResults();
 }
 
 async function renderTax() {
-  if (state.companies.length === 0) {
-    document.getElementById("app-content").innerHTML = `<section class="panel">${emptyState("还没有企业档案", "建立企业后即可上传税务资料。", "新建企业", "empty-create-company")}</section>`;
-    return;
-  }
-  const companyId = state.currentCompanyId || state.companies[0].id;
-  state.currentCompanyId = companyId;
+  if (!state.companies.length) { document.getElementById("app-content").innerHTML = `<section class="panel">${emptyState("还没有企业档案", "建立企业后即可上传税务资料。", "新建企业", "empty-create-company")}</section>`; return; }
+  state.currentCompanyId ||= state.companies[0].id;
+  const companyId = state.currentCompanyId;
+  showLoading();
   const fields = await api(`/api/companies/${companyId}/tax-snapshot`, {});
-  document.getElementById("app-content").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>企业税务档案</h2><p>完税证明按原表逐行保存，同一税种的不同记录不合并；结果需人工复核，不同税务口径不可直接相加。</p></div><div class="row-actions"><select id="tax-company">${state.companies.map((company) => `<option value="${company.id}" ${company.id === companyId ? "selected" : ""}>${escapeHtml(company.name)}</option>`).join("")}</select>${fields.length ? `<a class="primary-button" href="/api/companies/${companyId}/tax-export.xlsx">导出税务Excel</a>` : ""}</div></div>
-    ${fields.length === 0 ? emptyState("该企业还没有税务数据", "上传完税证明、增值税申报表或企业所得税申报表后显示在这里。", "上传税务资料", "empty-upload") : `<div class="table-wrap"><table><thead><tr><th>税务指标</th><th>数值</th><th>所属期间</th><th>状态</th><th>来源文件 / 页码</th><th>原文证据</th></tr></thead><tbody>${fields.map((field) => `<tr><td class="company-name">${escapeHtml(field.label)}</td><td>${formatMoney(field)}</td><td>${escapeHtml(field.period || "—")}</td><td>${badge(field.status)}</td><td>${escapeHtml(field.document_filename || "—")}<span class="subtext">第 ${field.source_page || "—"} 页</span></td><td class="evidence-cell">${escapeHtml(field.source_quote || "—")}</td></tr>`).join("")}</tbody></table></div>`}
-  </section>`;
+  if (state.view !== "tax" || state.currentCompanyId !== companyId) return;
+  state.archiveFields = fields;
+  if (state.archivePeriod !== "all" && !fields.some(f => f.period === state.archivePeriod)) state.archivePeriod = "all";
+  document.getElementById("app-content").innerHTML = `<section class="panel"><div class="panel-head"><div><h2>企业税务档案</h2><p>按原表逐行保存；同一税种的不同记录独立展示</p></div><div class="row-actions">${archiveCompanyPicker("tax-company")}${state.archiveFields.length ? `<a class="ghost-button" href="/api/companies/${companyId}/tax-export.xlsx">导出当前企业</a>` : ""}</div></div><div class="archive-note">不同税务口径不可直接相加，使用前请核对所属期间与复核状态。</div>${archiveToolbar()}</section>`;
+  updateArchiveResults();
 }
 
 function metricExportUrl() {
@@ -342,8 +425,8 @@ function updateMetricExportControls() {
 
 async function renderCurrentView() {
   showLoading();
-  document.getElementById("page-title").textContent = titles[state.view];
-  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === state.view));
+  syncNavigation();
+  if (state.dashboard === null) return;
   if (state.view === "dashboard") renderDashboard();
   if (state.view === "companies") renderCompanies();
   if (state.view === "documents") renderDocuments();
@@ -408,7 +491,8 @@ document.getElementById("main-nav").addEventListener("click", async (event) => {
   const button = event.target.closest("[data-view]");
   if (!button) return;
   state.view = button.dataset.view;
-  if (state.view === "review") state.reviewDocumentId = null;
+  if (state.view === "review") { state.reviewDocumentId = null; state.reviewFilter = "all"; state.reviewSearch = ""; state.reviewCompany = "all"; state.reviewPeriod = "all"; state.pages.review = 1; }
+  if (["financial", "tax"].includes(state.view)) { state.archiveSearch = ""; state.archivePeriod = "all"; state.pages[state.view] = 1; }
   await renderCurrentView();
 });
 
@@ -633,21 +717,22 @@ document.getElementById("review-form").addEventListener("submit", async (event) 
   delete data.field_id;
   for (const key of ["value_text", "unit", "period", "source_page", "source_quote"]) if (data[key] === "") data[key] = null;
   const continueReview = event.submitter?.id === "save-review-next";
+  const nextIds = WorkbenchUI.nextPendingIds(filteredReviewFields(), fieldId);
   try {
     await api(`/api/fields/${fieldId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
     document.getElementById("review-dialog").close();
     showToast("复核结果已保存", false);
     await refresh();
     if (continueReview) {
-      const nextField = state.fields.find((field) => field.status === "pending");
+      const nextField = nextIds.map(id => state.fields.find(f => f.id === id && f.status === "pending")).find(Boolean);
       if (nextField) openReviewDialog(nextField.id);
-      else showToast("当前列表已全部复核完成", false);
+      else showToast("当前筛选范围内已没有待复核字段", false);
     }
   } catch (error) { showToast(error.message, true); }
 });
 
 document.getElementById("app-content").addEventListener("click", async (event) => {
-  const target = event.target;
+  const target = event.target.closest("button, a, summary") || event.target;
   if (target.id === "create-company" || target.id === "empty-create-company") document.getElementById("company-dialog").showModal();
   if (target.id === "create-companies-batch") document.getElementById("company-batch-dialog").showModal();
   if (target.id === "document-upload" || target.id === "empty-upload") openUploadDialog(null);
@@ -660,17 +745,56 @@ document.getElementById("app-content").addEventListener("click", async (event) =
     document.getElementById("auto-upload-dialog").showModal();
   }
   if (target.id === "reload-app") await refresh();
-  if (target.dataset.go) { state.view = target.dataset.go; await renderCurrentView(); }
+  if (target.dataset.go) {
+    state.view = target.dataset.go;
+    if (state.view === "review") { state.reviewDocumentId = null; state.reviewSearch = ""; state.reviewCompany = "all"; state.reviewPeriod = "all"; state.reviewFilter = "all"; state.pages.review = 1; }
+    await renderCurrentView();
+  }
   if (target.dataset.uploadCompany) openUploadDialog(Number(target.dataset.uploadCompany));
   if (target.dataset.companyDocuments) {
     state.documentSearch = companyName(Number(target.dataset.companyDocuments));
+    state.documentStatus = "all"; state.documentType = "all"; state.pages.documents = 1;
     state.view = "documents";
     await renderCurrentView();
   }
-  if (target.dataset.companyFinancial) { state.currentCompanyId = Number(target.dataset.companyFinancial); state.view = "financial"; await renderCurrentView(); }
+  if (target.dataset.companyFinancial) { state.currentCompanyId = Number(target.dataset.companyFinancial); state.archiveSearch = ""; state.archivePeriod = "all"; state.pages.financial = 1; state.view = "financial"; await renderCurrentView(); }
   if (target.dataset.reviewDocument) { state.view = "review"; document.getElementById("page-title").textContent = titles.review; await renderReview(Number(target.dataset.reviewDocument)); }
   if (target.dataset.openReview) openReviewDialog(Number(target.dataset.openReview));
-  if (target.dataset.reviewFilter) { state.reviewFilter = target.dataset.reviewFilter; await renderReview(state.reviewDocumentId); }
+  if (target.dataset.reviewFilter) {
+    state.reviewFilter = target.dataset.reviewFilter; state.pages.review = 1;
+    document.querySelectorAll("[data-review-filter]").forEach(b => { b.classList.toggle("active", b.dataset.reviewFilter === state.reviewFilter); b.setAttribute("aria-pressed", String(b.dataset.reviewFilter === state.reviewFilter)); });
+    updateReviewResults();
+  }
+
+  if (target.dataset.documentQuick) {
+    if (state.view !== "documents") { state.documentSearch = ""; state.documentType = "all"; }
+    state.documentStatus = target.dataset.documentQuick; state.pages.documents = 1;
+    state.view = "documents"; syncNavigation(); renderDocuments();
+  }
+  if (target.id === "reset-documents") {
+    state.documentSearch = ""; state.documentStatus = "all"; state.documentType = "all";
+    state.pages.documents = 1; renderDocuments();
+  }
+  if (target.id === "reset-review") {
+    state.reviewSearch = ""; state.reviewCompany = "all"; state.reviewPeriod = "all"; state.reviewFilter = "all"; state.pages.review = 1;
+    document.querySelectorAll("[data-review-filter]").forEach(b => { b.classList.toggle("active", b.dataset.reviewFilter === "all"); b.setAttribute("aria-pressed", String(b.dataset.reviewFilter === "all")); });
+    document.getElementById("review-search").value = "";
+    document.getElementById("review-company").value = "all";
+    document.getElementById("review-period").value = "all";
+    updateReviewResults();
+  }
+  if (target.id === "reset-archive") {
+    state.archiveSearch = ""; state.archivePeriod = "all"; state.pages[state.view] = 1;
+    document.getElementById("archive-search").value = "";
+    document.getElementById("archive-period").value = "all";
+    updateArchiveResults();
+  }
+  if (target.dataset.pageKey) {
+    state.pages[target.dataset.pageKey] = Number(target.dataset.page);
+    redrawList(target.dataset.pageKey);
+    document.querySelector("#app-content .panel")?.scrollIntoView({block: "start", behavior: "smooth"});
+  }
+
   if (target.dataset.retryDocument) {
     try { await api(`/api/documents/${target.dataset.retryDocument}/retry`, { method: "POST" }); showToast("已按最新规则重新排队，不会重复运行 MinerU", false); await refresh(); }
     catch (error) { showToast(error.message, true); }
@@ -712,30 +836,42 @@ document.getElementById("app-content").addEventListener("click", async (event) =
 
 document.getElementById("app-content").addEventListener("change", async (event) => {
   if (event.target.id === "document-status") {
-    state.documentStatus = event.target.value;
+    state.documentStatus = event.target.value; state.pages.documents = 1;
+    document.querySelectorAll("[data-document-quick]").forEach(b => { b.classList.toggle("active", b.dataset.documentQuick === state.documentStatus); b.setAttribute("aria-pressed", String(b.dataset.documentQuick === state.documentStatus)); });
     updateDocumentSearchResults();
   }
   if (event.target.id === "document-type") {
-    state.documentType = event.target.value;
+    state.documentType = event.target.value; state.pages.documents = 1;
     updateDocumentSearchResults();
   }
-  if (event.target.id === "financial-company") {
-    state.currentCompanyId = Number(event.target.value);
+  if (event.target.id === "financial-company" && event.target.value) {
+    state.currentCompanyId = Number(event.target.value); state.pages[state.view] = 1;
     await renderFinancial();
   }
-  if (event.target.id === "tax-company") {
-    state.currentCompanyId = Number(event.target.value);
+  if (event.target.id === "tax-company" && event.target.value) {
+    state.currentCompanyId = Number(event.target.value); state.pages[state.view] = 1;
     await renderTax();
   }
   if (event.target.matches(".metric-check")) {
     state.currentMetricCodes = [...document.querySelectorAll(".metric-check:checked")].map((checkbox) => checkbox.value);
     updateMetricExportControls();
   }
+  if (event.target.dataset.pageSize) {
+    const key = event.target.dataset.pageSize; state.pageSizes[key] = Number(event.target.value); state.pages[key] = 1; redrawList(key);
+  }
+  if (["review-company", "review-period"].includes(event.target.id)) {
+    state[event.target.id === "review-company" ? "reviewCompany" : "reviewPeriod"] = event.target.value;
+    state.pages.review = 1; updateReviewResults();
+  }
+  if (event.target.id === "archive-period") { state.archivePeriod = event.target.value; state.pages[state.view] = 1; updateArchiveResults(); }
   if (event.target.id === "select-visible") {
     document.querySelectorAll(".field-check").forEach((checkbox) => { checkbox.checked = event.target.checked; });
   }
   if (event.target.matches("#select-visible, .field-check")) {
     const selectedCount = document.querySelectorAll(".field-check:checked").length;
+    const checkAll = document.getElementById("select-visible");
+    const total = document.querySelectorAll(".field-check").length;
+    if (checkAll) { checkAll.checked = total > 0 && selectedCount === total; checkAll.indeterminate = selectedCount > 0 && selectedCount < total; }
     const confirmButton = document.getElementById("confirm-selected");
     if (confirmButton) {
       confirmButton.disabled = selectedCount === 0;
@@ -744,27 +880,57 @@ document.getElementById("app-content").addEventListener("change", async (event) 
   }
 });
 
-document.getElementById("app-content").addEventListener("input", (event) => {
+function redrawList(key) {
+  if (key === "companies") updateCompanySearchResults();
+  if (key === "documents") updateDocumentSearchResults();
+  if (key === "review") updateReviewResults();
+  if (["financial", "tax"].includes(key)) updateArchiveResults();
+}
+
+function handleSearch(event) {
   if (event.isComposing) return;
-  if (event.target.id === "company-search") {
-    state.companySearch = event.target.value;
-    updateCompanySearchResults();
+  const {id, value} = event.target;
+  if (id === "company-search") { state.companySearch = value; state.pages.companies = 1; updateCompanySearchResults(); }
+  if (id === "document-search") { state.documentSearch = value; state.pages.documents = 1; updateDocumentSearchResults(); }
+  if (id === "review-search") { state.reviewSearch = value; state.pages.review = 1; updateReviewResults(); }
+  if (id === "archive-search") { state.archiveSearch = value; state.pages[state.view] = 1; updateArchiveResults(); }
+  if (id === "metric-search") {
+    document.querySelectorAll(".metric-option").forEach(option => { option.hidden = !matchesSearch(option.textContent, value); });
   }
-  if (event.target.id === "document-search") {
-    state.documentSearch = event.target.value;
-    updateDocumentSearchResults();
+  if (id === "archive-company-search") {
+    const select = document.getElementById(state.view === "financial" ? "financial-company" : "tax-company");
+    const companies = state.companies.filter(c => matchesSearch(`${c.name} ${c.unified_code || ""}`, value));
+    const current = state.companies.find(c => c.id === state.currentCompanyId);
+    const keepCurrent = current && !companies.some(c => c.id === current.id);
+    select.innerHTML = (keepCurrent ? `<option value="${current.id}" selected>当前：${escapeHtml(current.name)}</option>` : "")
+      + companies.map(c => `<option value="${c.id}" ${c.id === state.currentCompanyId ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")
+      + (!companies.length ? '<option value="" disabled>没有匹配企业，请修改搜索内容</option>' : "");
+    select.size = value.trim() ? Math.min(5, companies.length + (keepCurrent ? 1 : 0) + 1) : 1;
   }
+}
+document.getElementById("app-content").addEventListener("input", handleSearch);
+document.getElementById("app-content").addEventListener("compositionend", handleSearch);
+document.addEventListener("click", event => {
+  document.querySelectorAll(".action-menu[open], .metric-picker[open]").forEach(menu => {
+    if (!menu.contains(event.target)) menu.open = false;
+  });
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") document.querySelectorAll(".action-menu[open], .metric-picker[open]").forEach(menu => { menu.open = false; });
 });
 
-document.getElementById("app-content").addEventListener("compositionend", (event) => {
-  if (event.target.id === "company-search") {
-    state.companySearch = event.target.value;
-    updateCompanySearchResults();
-  }
-  if (event.target.id === "document-search") {
-    state.documentSearch = event.target.value;
-    updateDocumentSearchResults();
-  }
+const navIcons = {
+  dashboard: '<path d="m3 9 9-7 9 7v11H3z"/><path d="M9 20v-7h6v7"/>',
+  companies: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h2m4 0h2M8 11h2m4 0h2M8 15h2m4 0h2M10 21v-3h4v3"/>',
+  documents: '<path d="M14 2H5v20h14V7zM14 2v6h5M8 12h8M8 16h6"/>',
+  review: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="m7 12 3 3 7-7"/>',
+  financial: '<path d="M3 3v18h18M7 17v-5m5 5V7m5 10V4"/>',
+  tax: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h8M8 14h2m4 0h2m-8 4h2m4 0h2"/>',
+};
+document.querySelectorAll(".nav-item").forEach(item => {
+  const icon = item.querySelector("span");
+  icon.setAttribute("aria-hidden", "true");
+  icon.innerHTML = `<svg viewBox="0 0 24 24">${navIcons[item.dataset.view]}</svg>`;
+  item.title = titles[item.dataset.view];
 });
-
 refresh();
